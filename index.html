@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shader Animation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script id="fs" type="x-shader/x-fragment">
+    precision mediump float;
+    uniform float time;
+    uniform vec2  mouse;
+    uniform vec2  resolution;
+    // window ratio
+    float ratio = resolution.x / resolution.y; 
+    float PI = 3.1415926;
+
+    float random(vec2 p) {
+      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123);
+    }
+
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      
+      float a = random(i);
+      float b = random(i + vec2(1.0, 0.0));
+      float c = random(i + vec2(0.0, 1.0));
+      float d = random(i + vec2(1.0, 1.0));
+      
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      
+      return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+    }
+
+    vec2 rotate2d(vec2 p, float angle){
+      p =  mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * p;
+      return p;
+    }
+
+    void main(void) {
+      // center center
+      vec2 p = vec2(gl_FragCoord.xy * 2.0 - resolution) / min(resolution.x, resolution.y);
+      // left bottom
+      // vec2 p = gl_FragCoord.xy / resolution.xy;
+      vec2 m = vec2(mouse.x * 2.0 - 1.0, -mouse.y * 2.0 + 1.0);
+      float l = length(p);
+      for (float i = 1.0; i < 24.0; i++) {
+        p = rotate2d(p, i + time / 10.0);
+        p.x += 0.5 / i * sin(i * p.y + time) + noise(vec2(l + time));
+        p.y += 0.5 / i * cos(i * p.x + time) + noise(vec2(l + time));
+      }
+      l = pow(l, 5.0) + l + l + l;
+      gl_FragColor = vec4(vec3(l - noise(p * 2.0 + time) + sin(l + time) - 1.0), 1.0);
+    }
+  </script>
+
+  <script id="vs" type="x-shader/x-vertex">
+    attribute vec3 position;
+
+    void main(void){
+      gl_Position = vec4(position, 1.0);
+    }
+  </script>
+
+  <script>
+    // WebGL initialization and shader handling
+    const vertexShaderSource = document.getElementById('vs').textContent.trim();
+    const fragmentShaderSource = document.getElementById('fs').textContent.trim();
+
+    let canvas = document.getElementById('canvas');
+    let gl = canvas.getContext('webgl');
+
+    if (!gl) {
+      console.error('WebGL not supported');
+    }
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // Create vertex shader
+    let vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+      console.error('Vertex shader compilation error:', gl.getShaderInfoLog(vertexShader));
+    }
+
+    // Create fragment shader
+    let fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+      console.error('Fragment shader compilation error:', gl.getShaderInfoLog(fragmentShader));
+    }
+
+    // Create shader program
+    let shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+    gl.useProgram(shaderProgram);
+
+    // Define vertex data
+    let vertices = [
+      -1.0, -1.0, 0.0,
+       1.0, -1.0, 0.0,
+      -1.0,  1.0, 0.0,
+       1.0,  1.0, 0.0,
+    ];
+
+    // Create vertex buffer
+    let vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+    // Get attribute location and enable vertex attributes
+    let positionAttributeLocation = gl.getAttribLocation(shaderProgram, 'position');
+    gl.enableVertexAttribArray(positionAttributeLocation);
+    gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+
+    // Set uniform variables
+    let resolutionUniformLocation = gl.getUniformLocation(shaderProgram, 'resolution');
+    let mouseUniformLocation = gl.getUniformLocation(shaderProgram, 'mouse');
+    let timeUniformLocation = gl.getUniformLocation(shaderProgram, 'time');
+
+    function animate(timestamp) {
+      resizeCanvas(); // Ensure canvas size matches window size
+
+      gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
+      gl.uniform2f(mouseUniformLocation, 0.5, 0.5); // Example mouse position
+      gl.uniform1f(timeUniformLocation, timestamp * 0.001); // Time in seconds
+
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      requestAnimationFrame(animate);
+    }
+
+    animate(0); // Start animation loop
+  </script>
+  <script src="src/javascript/sketch.js"></script>
+</body>
+</html>
